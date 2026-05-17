@@ -294,65 +294,64 @@ st.subheader("1. 资料上传")
 uploaded_file = st.file_uploader("上传原简历 (仅支持 PDF 格式)", type=["pdf"])
 jd_text = st.text_area("粘贴目标岗位的 JD (职位描述)", height=200, placeholder="请粘贴完整的岗位要求和职责描述...")
 
+# ==========================================
 # 动作按钮
+# ==========================================
 if st.button("🚀 开始一键优化", type="primary"):
-    # 基础校验
-
     if not uploaded_file:
         st.warning("📄 请上传你的原版 PDF 简历！")
     elif not jd_text.strip():
         st.warning("📝 请输入目标岗位 JD！")
     else:
-        # 运行核心逻辑
         with st.spinner("🧠 AI 正在深度思考与重构简历，请稍候（约需 1-2 分钟）..."):
             try:
-                # 1. 保存上传的 PDF 为临时文件供 pdfplumber 读取
                 temp_pdf_path = "temp_uploaded_resume.pdf"
                 with open(temp_pdf_path, "wb") as f:
                     f.write(uploaded_file.getbuffer())
 
-                # 2. 初始化 Agent
                 agent = ResumeOptimizationAgent(api_key=API_KEY)
 
-                # 3. 提取与优化
                 raw_text = agent.extract_text_from_pdf(temp_pdf_path)
                 optimized_data = agent.optimize_resume_step(raw_text, jd_text)
 
-                # 4. 渲染 Word
                 output_docx_path = "优化后满分简历.docx"
-                template_path = "template_full_style.docx"  # 确保此文件存在同目录
+                template_path = "template_full_style.docx"
                 agent.render_to_word(optimized_data, template_path, output_docx_path)
 
-                # 5. 生成报告
                 report = agent.generate_report_step(raw_text, jd_text, optimized_data)
 
-                # 清理临时文件
                 os.remove(temp_pdf_path)
 
-                # ==========================================
-                # 3. 结果展示区
-                # ==========================================
-                st.success("🎉 简历优化大功告成！")
-
-                # 提供下载按钮
+                # 🌟 核心改动 1：把生成好的数据存入 Streamlit 的“记忆胶囊”中
+                st.session_state['generated_report'] = report
                 with open(output_docx_path, "rb") as file:
-                    st.download_button(
-                        label="📥 下载精美 Word 简历",
-                        data=file,
-                        file_name="优化后满分简历.docx",
-                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                    )
+                    st.session_state['generated_docx'] = file.read()
 
-                # 展示诊断报告
-                st.divider()
-                st.subheader("📊 AI 猎头洞察报告")
-
-                st.info(f"**💡 总体总结：**\n\n{report.summary}")
-
-                st.warning("**⚠️ 差距分析 (Gap Analysis)：**\n\n" + "\n".join([f"- {g}" for g in report.gap_analysis]))
-
-                st.success(
-                    "**🎯 行动建议 (Actionable Advice)：**\n\n" + "\n".join([f"- {a}" for a in report.actionable_advice]))
+                st.success("🎉 简历优化大功告成！")
 
             except Exception as e:
                 st.error(f"❌ 运行中出现错误，请检查 API Key 或重试：\n{e}")
+
+# ==========================================
+# 3. 结果展示区 (🌟 核心改动 2：移到了按钮判断的外面)
+# 只要记忆胶囊里有数据，不管怎么点击刷新，报告都会死死钉在页面上！
+# ==========================================
+if 'generated_report' in st.session_state and 'generated_docx' in st.session_state:
+    # 提供下载按钮 (直接从记忆胶囊中读取 Word 二进制数据)
+    st.download_button(
+        label="📥 下载精美 Word 简历",
+        data=st.session_state['generated_docx'],
+        file_name="优化后满分简历.docx",
+        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
+
+    # 展示诊断报告
+    st.divider()
+    st.subheader("📊 AI 猎头洞察报告")
+
+    # 从记忆胶囊中取出报告对象
+    saved_report = st.session_state['generated_report']
+
+    st.info(f"**💡 总体总结：**\n\n{saved_report.summary}")
+    st.warning("**⚠ 差距分析 (Gap Analysis)：**\n\n" + "\n".join([f"- {g}" for g in saved_report.gap_analysis]))
+    st.success("**🎯 行动建议 (Actionable Advice)：**\n\n" + "\n".join([f"- {a}" for a in saved_report.actionable_advice]))
