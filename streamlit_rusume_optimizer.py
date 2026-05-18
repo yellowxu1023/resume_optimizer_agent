@@ -4,42 +4,38 @@ import json
 import pdfplumber
 from openai import OpenAI
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import List, Optional, Union
 from docxtpl import DocxTemplate
 
 
 # ==========================================
 # --- 新增：总体总结与建议模型 ---
-class OptimizationReport(BaseModel):
-    summary: str = Field(description="总体优化总结")
-    gap_analysis: List[str] = Field(description="原简历与JD的差异/缺失分析")
-    actionable_advice: List[str] = Field(description="给候选人的可执行建议")
-
-
-# 1. 定义数据结构 (Pydantic Models) - 保持不变
-# ==========================================
 class PersonalInfo(BaseModel):
     name: str
     phone: str
     email: str
     education_summary: str
     experience_years: str
-    age: str
+    age: Union[str, int]  # 🌟 修复点 1：同时兼容字符串 "36" 和整数 36
 
+
+# class Duty(BaseModel):
+#     title: str
+#     detail: str
 
 class WorkExperience(BaseModel):
     company: str
     position: str
     date_range: str
-    responsibilities: List[str]
+    responsibilities: List[str]  # 🌟 修复点 2：这里必须是 List[Duty]，不能是 List[str]
 
 
 class ProjectExperience(BaseModel):
-    name: str = Field(description="项目名称，如：某OEM镀膜及先进材料产品结构与工艺改进项目")
-    role: str = Field(description="项目角色，如：项目统筹与技术负责人")
-    date_range: str = Field(description="项目时间")
-    description: str = Field(description="项目内容描述")
-    contributions: List[str] = Field(description="核心贡献列表，使用STAR法则精简")
+    name: str
+    role: str
+    date_range: str
+    description: str
+    contributions: List[str]
 
 
 class EducationExperience(BaseModel):
@@ -54,9 +50,15 @@ class ResumeData(BaseModel):
     core_advantages: List[str]
     professional_skills: List[str]
     work_experiences: List[WorkExperience]
-    project_experiences: List[ProjectExperience]  # 新增：项目经历
-    education_experiences: List[EducationExperience]  # 新增：教育经历
-    certifications_and_languages: List[str]  # 新增：证书与语言
+    project_experiences: List[ProjectExperience]
+    education_experiences: List[EducationExperience]
+    certifications_and_languages: List[str]
+
+
+class OptimizationReport(BaseModel):
+    summary: str
+    gap_analysis: List[str]
+    actionable_advice: List[str]
 
 
 # ==========================================
@@ -117,13 +119,37 @@ class ResumeOptimizationAgent:
         - 术语对齐：将原简历中非标准的描述转换为 JD 中的专业术语。
         - 优先级重排：将原简历中与 JD 匹配度最高的经历和技能放在最显眼的位置。
         - 动作强化：使用更具领导力和执行力的动词（如：主导、驱动、优化、重构、整合）。
-        - 隐含 STAR 法则：工作经历在逻辑上需符合“情境-任务-行动-结果”的闭环，但【绝对禁止】在文本中直接输出“STAR”、“情境”、“任务”、“行动”、“结果”、“背景”等字眼！请将其融合成一句自然、连贯、精炼的专业描述（例如直接输出：“针对系统卡顿问题，引入重构机制，将加载速度提升30%”）。
+        - 隐含 STAR 法则：工作经历在逻辑上需符合“情境-任务-行动-结果”的闭环，但【绝对禁止】在文本中直接输出“STAR”、“情境”、“任务”、“行动”、“结果”、“背景”等字眼！请将其融合成一句自然、连贯、精炼的专业描述。
+        - 🌟 精炼限制：候选人的核心优势必须经过高度提炼和浓缩，【绝对不能超过 4 点】，字字珠玑，直击 JD 痛点。
 
-        【输出格式要求（极其重要）】
-        你必须严格按照以下 JSON Schema 格式输出结果。
-        注意：请直接在根节点输出 `personal_info` 等字段，**绝对禁止**将结果包裹在 `optimized_resume`、`ResumeData` 或任何额外嵌套的字典外壳中！不要输出任何多余的解释文字！
+        【输出格式要求（最高优先级）】
+        必须且只能输出一个合法的 JSON 对象！绝对不要把数据包裹在任何额外的大括号外壳里！
+        你的 JSON 必须严格按照下面的格式输出（注意 keys 的拼写必须完全一致）：
 
-        {schema_json}
+        {{
+            "personal_info": {{ "name": "姓名", "phone": "手机号", "email": "邮箱", "education_summary": "学历摘要", "experience_years": "经验年限", "age": "年龄" }},
+            "core_advantages": ["优势1", "优势2", "优势3", "优势4 (注意：此处数组元素绝对不能超过 4 个)"],
+            "education_experiences": [
+                {{ "school": "学校", "major": "专业", "degree": "学位", "date_range": "时间" }}
+            ],
+            "work_experiences": [
+                {{
+                    "company": "公司名", "position": "职位", "date_range": "时间",
+                    "responsibilities": [
+                        "第一条具体的工作描述，自然连贯，严禁带有STAR等前缀",
+                        "第二条具体的工作描述，自然连贯，严禁带有STAR等前缀"
+                    ]
+                }}
+            ],
+            "project_experiences": [
+                {{
+                    "name": "项目名", "role": "角色", "date_range": "时间", "description": "项目内容描述（纯文本，无前缀）",
+                    "contributions": ["贡献1", "贡献2"]
+                }}
+            ],
+            "professional_skills": ["技能1", "技能2"],
+            "certifications_and_languages": ["证书与语言1"]
+        }}
 
         【简历原文】
         {raw_text}
@@ -281,8 +307,7 @@ class ResumeOptimizationAgent:
 st.set_page_config(page_title="AI 顶级猎头 - 简历优化引擎", page_icon="💼", layout="centered")
 
 st.title("💼 AI 顶级猎头 - 简历优化引擎")
-st.markdown("上传你的PDF简历，输入目标岗位JD，AI将为你重构一份直击HR痛点的满分简历，并出具深度诊断报告！")
-
+st.markdown("上传你的PDF简历，输入目标岗位JD，AI将为你重构一份直击HR痛点的满分简历，并出具深度诊断报告！(系统不会保留任何数据，请放心使用)")
 
 try:
     API_KEY = st.secrets["DEEPSEEK_API_KEY"]
